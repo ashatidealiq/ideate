@@ -1,0 +1,28 @@
+[project]
+name = "ideate"
+version = "0.0.1"
+description = "Idea-to-evidence pipeline: turns a written idea into a falsifiable backtest with an immutable, hashed evidence trail."
+requires-python = ">=3.11"
+dependencies = [
+    "pandas",
+    "pyarrow",
+    "numpy",
+    "pydantic",
+    "pyyaml",
+    "papermill",
+    "jupytext",
+    "statsmodels",
+    "matplotlib",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["common*"]
