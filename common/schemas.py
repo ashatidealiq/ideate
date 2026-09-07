@@ -133,6 +133,19 @@ class FieldDef(StrictModel):
     description: str
 
 
+class UniverseDef(StrictModel):
+    """One entry in `catalogue/universes.yaml`: a base universe defined as a
+    per-date membership rule over a catalogue field (DESIGN §4, §6.3). An
+    asset is a member on a date iff `member_if_present` has a value for that
+    (date, asset_id) — which, since fields are write-once and delisted
+    assets simply stop appearing in their rows, also gives delisting for
+    free. Spec-level `universe.filters` (min_mktcap etc., DESIGN §6.3) are
+    layered on top of this base universe later; they are not part of it."""
+
+    name: str
+    member_if_present: str
+
+
 # --------------------------------------------------------------------------
 # Resolution (DESIGN §7 Stage 2)
 # --------------------------------------------------------------------------

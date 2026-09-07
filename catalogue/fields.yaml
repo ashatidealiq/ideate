@@ -1,0 +1,96 @@
+# Field catalogue for the synthetic fixture panel (fixtures/build_fixture.py,
+# DESIGN.md §12). Mirrors the shape of DESIGN §4's example fields.yaml.
+fields:
+  - name: close
+    source: panel/close.parquet
+    dtype: float64
+    pit: {event_col: date, knowledge_col: date, lag_days: 0}
+    coverage: {start: "2010-01-04", universes: [all]}
+    description: "Fixture close price"
+
+  - name: volume
+    source: panel/volume.parquet
+    dtype: float64
+    pit: {event_col: date, knowledge_col: date, lag_days: 0}
+    coverage: {start: "2010-01-04", universes: [all]}
+    description: "Fixture daily volume, shares"
+
+  - name: mktcap
+    source: panel/mktcap.parquet
+    dtype: float64
+    pit: {event_col: date, knowledge_col: date, lag_days: 0}
+    coverage: {start: "2010-01-04", universes: [all]}
+    description: "Fixture market cap: close * shares outstanding"
+
+  - name: ret_1d
+    source: panel/ret_1d.parquet
+    dtype: float64
+    pit: {event_col: date, knowledge_col: date, lag_days: 0}
+    coverage: {start: "2010-01-05", universes: [all]}
+    known_gaps: ["first trading day per asset has no prior close, so no ret_1d"]
+    description: "Fixture one-day close-to-close return, materialised from close"
+
+  - name: adv_20
+    source: panel/adv_20.parquet
+    dtype: float64
+    pit: {event_col: date, knowledge_col: date, lag_days: 0}
+    coverage: {start: "2010-01-29", universes: [all]}
+    known_gaps: ["first 19 trading days per asset have no full 20-day window"]
+    description: "Fixture 20-day rolling mean volume, materialised from volume"
+
+  - name: sector
+    source: panel/sector.parquet
+    dtype: string
+    pit: {event_col: date, knowledge_col: date, lag_days: 0}
+    coverage: {start: "2010-01-04", universes: [all]}
+    description: "Fixture sector, static per asset"
+
+  - name: country
+    source: panel/country.parquet
+    dtype: string
+    pit: {event_col: date, knowledge_col: date, lag_days: 0}
+    coverage: {start: "2010-01-04", universes: [all]}
+    description: "Fixture country, static per asset"
+
+  - name: region
+    source: panel/region.parquet
+    dtype: string
+    pit: {event_col: date, knowledge_col: date, lag_days: 0}
+    coverage: {start: "2010-01-04", universes: [all]}
+    description: "Fixture region (US or EU), static per asset"
+
+  - name: cds_spread_5y
+    source: panel/cds_spread_5y.parquet
+    dtype: float64
+    pit: {event_col: date, knowledge_col: date, lag_days: 1}
+    coverage: {start: "2010-01-04", universes: [cds_names]}
+    description: "Fixture 5y CDS mid spread, bps, for the 80 CDS-covered names"
+
+  - name: planted_signal_1
+    source: panel/planted_signal_1.parquet
+    dtype: float64
+    pit: {event_col: date, knowledge_col: date, lag_days: 0}
+    coverage: {start: "2010-01-04", universes: [all]}
+    description: "Fixture-only planted alpha signal, target Sharpe ~1.5 (see fixtures/build_fixture.py)"
+
+  - name: planted_signal_2
+    source: panel/planted_signal_2.parquet
+    dtype: float64
+    pit: {event_col: date, knowledge_col: date, lag_days: 0}
+    coverage: {start: "2010-01-04", universes: [all]}
+    description: "Fixture-only planted alpha signal, target Sharpe ~1.0 (see fixtures/build_fixture.py)"
+
+  - name: planted_signal_3
+    source: panel/planted_signal_3.parquet
+    dtype: float64
+    pit: {event_col: date, knowledge_col: date, lag_days: 0}
+    coverage: {start: "2010-01-04", universes: [all]}
+    description: "Fixture-only planted alpha signal, target Sharpe ~0.5 (see fixtures/build_fixture.py)"
+
+  - name: lookahead_trap
+    source: panel/lookahead_trap.parquet
+    dtype: float64
+    pit: {event_col: date, knowledge_col: date, lag_days: 30}
+    coverage: {start: "2010-01-04", universes: [all]}
+    known_gaps: ["deliberate PIT test fixture (DESIGN §12): knowledge_date is always date + 30 days"]
+    description: "Fixture-only lookahead trap: catches a loader that filters on date instead of knowledge_date"

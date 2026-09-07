@@ -1,0 +1,10 @@
+# Base universes for the synthetic fixture panel (DESIGN.md §4, §6.3).
+# Membership on a date is "asset has a row in member_if_present's field
+# file on that date" -- which also gives delisting for free, since a
+# delisted asset simply stops having rows.
+universes:
+  - name: all
+    member_if_present: close
+
+  - name: cds_names
+    member_if_present: cds_spread_5y
