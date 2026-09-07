@@ -5,3 +5,5 @@ __pycache__/
 /data/
 fixtures/panel/
 fixtures/factors.parquet
+fixtures/unmet_requirements.parquet
+.claude/

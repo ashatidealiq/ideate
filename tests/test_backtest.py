@@ -179,3 +179,90 @@ def test_planted_signals_recover_known_net_sharpe(field, use_fixture_panel):
     realized_sharpe = m.sharpe(net_returns)
     target = PLANTED_SIGNALS[field]["target_sharpe"]
     assert realized_sharpe == pytest.approx(target, abs=0.1)
+
+
+# --------------------------------------------------------------------------
+# Regression tests for two bugs found integrating Stage 5 (notebooks/05_backtest.py)
+# against the real fixture -- exactly the kind of thing synthetic-data
+# testing was expected to surface.
+# --------------------------------------------------------------------------
+
+
+def test_zero_threshold_filter_does_not_require_field_presence():
+    """A min_adv_20=0 filter must not implicitly require adv_20 to be
+    non-null -- it means "no filter", not "field must exist". Regression:
+    this used to silently exclude every asset during adv_20's warmup
+    window even though the spec never asked for a liquidity floor."""
+    n_assets, n_days = 8, 10
+    dates = pd.bdate_range("2021-01-04", periods=n_days)
+    assets = [f"A{i}" for i in range(n_assets)]
+    rows = []
+    for t, d in enumerate(dates):
+        for i, a in enumerate(assets):
+            rows.append(
+                {
+                    "date": d,
+                    "asset_id": a,
+                    "sig": float(i),
+                    "ret_1d": 0.0,
+                    "adv_20": np.nan if t < 5 else 1_000_000.0,  # simulate a 5-day warmup
+                }
+            )
+    panel = pd.DataFrame(rows)
+
+    spec = Spec(
+        signal=Signal(nodes=[SignalNode(id="n1", op="cs_rank", inputs=["sig"])], output="n1", sign=1),
+        universe=Universe(base="all", filters=UniverseFilters(min_mktcap=0, min_adv_20=0, min_price=0, min_history_days=0)),
+        portfolio=Portfolio(
+            construction="top_n_bottom_n", n=2, threshold=PortfolioThreshold(), weighting="equal",
+            gross_leverage=1.0, net_exposure=0.0, max_position=1.0, rebalance="daily", holding_period=1, execution_lag=1,
+        ),
+        costs=Costs(spread_model="fixed_bps", spread_bps=0, impact_model="none", impact_coeff=0, borrow_bps_annual=0),
+        assumptions=[Assumption(id="A1", choice="x", source_says="y", alternatives=[])],
+    )
+    result = bt.run_backtest(spec, panel)
+
+    traded_dates = {p.date for p in result.positions}
+    assert dates[1].date() in traded_dates  # a trade on day 2 (signal day 1, lag 1) despite adv_20 being NaN there
+
+
+def test_delisted_name_liquidation_prices_without_crashing():
+    """A held position in a name that stops appearing (delisted) must
+    still be liquidatable under adv_based costs -- the forced closeout
+    trade needs *some* adv/region to price against, even though the name
+    has no data as of the trade date. Regression: this used to raise
+    instead of falling back to the name's last known values."""
+    n_assets, n_days = 6, 10
+    dates = pd.bdate_range("2021-01-04", periods=n_days)
+    assets = [f"A{i}" for i in range(n_assets)]
+    delisted_asset, delist_after = "A0", dates[3]
+
+    rows = []
+    for t, d in enumerate(dates):
+        for i, a in enumerate(assets):
+            if a == delisted_asset and d > delist_after:
+                continue
+            rows.append(
+                {
+                    "date": d, "asset_id": a,
+                    "sig": 10.0 if a == delisted_asset else float(i),  # keep it selected right up to delisting
+                    "ret_1d": 0.0, "adv_20": 1_000_000.0, "close": 50.0, "region": "US",
+                }
+            )
+    panel = pd.DataFrame(rows)
+
+    spec = Spec(
+        signal=Signal(nodes=[SignalNode(id="n1", op="cs_rank", inputs=["sig"])], output="n1", sign=1),
+        universe=Universe(base="all", filters=UniverseFilters(min_mktcap=0, min_adv_20=0, min_price=0, min_history_days=0)),
+        portfolio=Portfolio(
+            construction="top_n_bottom_n", n=1, threshold=PortfolioThreshold(), weighting="equal",
+            gross_leverage=1.0, net_exposure=0.0, max_position=1.0, rebalance="daily", holding_period=1, execution_lag=1,
+        ),
+        costs=Costs(spread_model="adv_based", impact_model="sqrt", impact_coeff=0.1, borrow_bps_annual=0),
+        assumptions=[Assumption(id="A1", choice="x", source_says="y", alternatives=[])],
+    )
+
+    result = bt.run_backtest(spec, panel)  # must not raise
+
+    liquidation_trades = [t for t in result.trades if t.asset_id == delisted_asset and t.delta_weight < 0]
+    assert len(liquidation_trades) > 0

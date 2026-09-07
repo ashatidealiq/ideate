@@ -15,7 +15,11 @@ from __future__ import annotations
 import textwrap
 from pathlib import Path
 
-import matplotlib.pyplot as plt
+import matplotlib
+
+matplotlib.use("Agg")  # headless: only ever renders to a PDF file, never a screen
+
+import matplotlib.pyplot as plt  # noqa: E402 -- must follow matplotlib.use()
 
 OUT_DIR = Path(__file__).parent / "papers"
 

@@ -15,6 +15,7 @@ dependencies = [
     "matplotlib",
     "scipy",
     "pypdf",
+    "tabulate",
 ]
 
 [project.optional-dependencies]

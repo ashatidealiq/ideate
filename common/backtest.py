@@ -42,6 +42,7 @@ import pandas as pd
 
 from common import catalogue
 from common import compile as compiler
+from common import config
 from common import costs as cost_model
 from common import portfolio as port
 from common.schemas import Position, ReturnRow, Spec, Trade
@@ -59,6 +60,13 @@ class BacktestContext:
     replication: bool = False
 
 
+def rebalance_dates(all_dates: pd.DatetimeIndex, rebalance: str) -> pd.DatetimeIndex:
+    """Public alias of the internal rebalance-date selector, for callers
+    (Stage 5) that need to know how many rebalance events *should* happen
+    over a period, independent of running a backtest."""
+    return _rebalance_dates(all_dates, rebalance)
+
+
 def _rebalance_dates(all_dates: pd.DatetimeIndex, rebalance: str) -> pd.DatetimeIndex:
     if rebalance == "daily":
         return all_dates
@@ -73,6 +81,12 @@ def _rebalance_dates(all_dates: pd.DatetimeIndex, rebalance: str) -> pd.Datetime
     return pd.DatetimeIndex(sorted(first_per_key.values))
 
 
+def advance_trading_days(all_dates: pd.DatetimeIndex, date: pd.Timestamp, n: int) -> pd.Timestamp | None:
+    """Public alias -- Stage 5 needs this to translate expected *signal*
+    dates into expected *trade* dates when checking for an empty universe."""
+    return _advance_trading_days(all_dates, date, n)
+
+
 def _advance_trading_days(all_dates: pd.DatetimeIndex, date: pd.Timestamp, n: int) -> pd.Timestamp | None:
     pos = all_dates.get_loc(date)
     target = pos + n
@@ -81,15 +95,30 @@ def _advance_trading_days(all_dates: pd.DatetimeIndex, date: pd.Timestamp, n: in
     return all_dates[target]
 
 
-def _eligible_assets(candidate_index, rdate, filters, mktcap_wide, adv_wide, close_wide, sector_wide):
+def _eligible_assets(candidate_index, rdate, filters, mktcap_wide, adv_wide, close_wide, sector_wide, require_adv: bool = False):
+    """A threshold of 0 means that filter is disabled -- it must not
+    require the underlying field to even be present. Without this, a spec
+    that doesn't care about ADV would still get shut out of every asset
+    during, say, adv_20's 20-day warmup window, since a merely-unfiltered
+    field would otherwise still be required non-null.
+
+    `require_adv` is separate from `filters.min_adv_20`: it's set when
+    `costs.spread_model == "adv_based"`, which needs adv_dollars to price
+    a trade at all, regardless of what liquidity bar (if any) the spec
+    asked for. An asset with no ADV yet simply cannot be traded under that
+    cost model -- this is a hard requirement of the model, not a
+    threshold to be disabled by setting it to 0.
+    """
     eligible = pd.Series(True, index=candidate_index)
-    if mktcap_wide is not None and rdate in mktcap_wide.index:
+    if filters.min_mktcap > 0 and mktcap_wide is not None and rdate in mktcap_wide.index:
         vals = mktcap_wide.loc[rdate].reindex(candidate_index)
         eligible &= vals.notna() & (vals >= filters.min_mktcap)
-    if adv_wide is not None and rdate in adv_wide.index:
+    if adv_wide is not None and rdate in adv_wide.index and (filters.min_adv_20 > 0 or require_adv):
         vals = adv_wide.loc[rdate].reindex(candidate_index)
         eligible &= vals.notna() & (vals >= filters.min_adv_20)
-    if close_wide is not None and rdate in close_wide.index:
+    elif require_adv and adv_wide is None:
+        raise ValueError("costs.spread_model='adv_based' requires 'adv_20' to be loaded in the panel")
+    if filters.min_price > 0 and close_wide is not None and rdate in close_wide.index:
         vals = close_wide.loc[rdate].reindex(candidate_index)
         eligible &= vals.notna() & (vals >= filters.min_price)
     if sector_wide is not None and rdate in sector_wide.index and filters.exclude_sectors:
@@ -104,8 +133,14 @@ def _pivot(panel: pd.DataFrame, field: str) -> pd.DataFrame | None:
     return panel.pivot(index="date", columns="asset_id", values=field)
 
 
-def run_backtest(spec: Spec, panel: pd.DataFrame, context: BacktestContext | None = None) -> BacktestResultSchema:
+def run_backtest(
+    spec: Spec, panel: pd.DataFrame, context: BacktestContext | None = None, aum: float | None = None
+) -> BacktestResultSchema:
+    """`aum` overrides `common.config.TARGET_AUM` for cost pricing --
+    DESIGN §8 G8 (capacity) reruns the same spec at 5x the target AUM to
+    see how much a larger book's market impact erodes net Sharpe."""
     context = context or BacktestContext()
+    aum = aum if aum is not None else config.TARGET_AUM
 
     if spec.portfolio.execution_lag < 1 and not context.replication:
         raise ValueError("execution_lag < 1 is only allowed when context.replication=True")
@@ -124,6 +159,15 @@ def run_backtest(spec: Spec, panel: pd.DataFrame, context: BacktestContext | Non
     country_wide = _pivot(panel, "country")
     region_wide = _pivot(panel, "region")
 
+    # Forward-filled *only* for cost pricing: a forced liquidation trade
+    # after a name has delisted needs *some* adv/region to price against,
+    # and its last known values are the reasonable choice -- eligibility
+    # and selection above still use the live (non-filled) tables, so a
+    # delisted name can never be newly picked.
+    adv_wide_ffill = adv_wide.ffill() if adv_wide is not None else None
+    close_wide_ffill = close_wide.ffill() if close_wide is not None else None
+    region_wide_ffill = region_wide.ffill() if region_wide is not None else None
+
     costs_catalogue = catalogue.load_costs() if spec.costs.spread_model == "adv_based" else {}
 
     rebal_dates = _rebalance_dates(all_dates, spec.portfolio.rebalance)
@@ -137,7 +181,10 @@ def run_backtest(spec: Spec, panel: pd.DataFrame, context: BacktestContext | Non
         if sig_slice.empty:
             continue
 
-        eligible = _eligible_assets(sig_slice.index, rdate, spec.universe.filters, mktcap_wide, adv_wide, close_wide, sector_wide)
+        eligible = _eligible_assets(
+            sig_slice.index, rdate, spec.universe.filters, mktcap_wide, adv_wide, close_wide, sector_wide,
+            require_adv=(spec.costs.spread_model == "adv_based"),
+        )
         sig_slice = sig_slice.loc[sig_slice.index.intersection(eligible)]
         if sig_slice.empty:
             continue
@@ -177,18 +224,18 @@ def run_backtest(spec: Spec, panel: pd.DataFrame, context: BacktestContext | Non
 
             for asset_id, dw in changed.items():
                 adv_dollars = None
-                if adv_wide is not None and close_wide is not None and date in adv_wide.index and date in close_wide.index:
-                    adv_shares = adv_wide.at[date, asset_id] if asset_id in adv_wide.columns else np.nan
-                    price = close_wide.at[date, asset_id] if asset_id in close_wide.columns else np.nan
+                if adv_wide_ffill is not None and close_wide_ffill is not None and date in adv_wide_ffill.index and date in close_wide_ffill.index:
+                    adv_shares = adv_wide_ffill.at[date, asset_id] if asset_id in adv_wide_ffill.columns else np.nan
+                    price = close_wide_ffill.at[date, asset_id] if asset_id in close_wide_ffill.columns else np.nan
                     if pd.notna(adv_shares) and pd.notna(price):
                         adv_dollars = float(adv_shares * price)
                 region = None
-                if region_wide is not None and date in region_wide.index and asset_id in region_wide.columns:
-                    r = region_wide.at[date, asset_id]
+                if region_wide_ffill is not None and date in region_wide_ffill.index and asset_id in region_wide_ffill.columns:
+                    r = region_wide_ffill.at[date, asset_id]
                     region = r if pd.notna(r) else None
                 region_costs = costs_catalogue.get(region) if region else None
 
-                cost_bps = cost_model.trade_cost_bps(spec.costs, float(dw), adv_dollars, region_costs)
+                cost_bps = cost_model.trade_cost_bps(spec.costs, float(dw), adv_dollars, region_costs, aum=aum)
                 trades_rows.append(Trade(date=date.date(), asset_id=asset_id, delta_weight=float(dw), cost_bps=float(cost_bps)))
                 daily_cost_frac += abs(float(dw)) * (cost_bps / 10_000.0)
 
