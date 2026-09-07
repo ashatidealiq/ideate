@@ -193,6 +193,23 @@ def read_input(claim_id: str, run_id: str, stage: str, filename: str) -> pd.Data
     return pd.read_parquet(file_path)
 
 
+def get_trial_count(claim_id: str) -> int:
+    """The cumulative number of backtests executed under `claim_id`, across
+    every run and stage recorded in the registry (DESIGN §3.4) -- the
+    latest (max) `trial_count` value for that claim, or 0 if the claim has
+    no registry rows yet. `gates.py`'s G4 (deflated Sharpe) calls this
+    directly rather than taking `trial_count` as an argument, so it can
+    never be passed a stale or spoofed value."""
+    path = config.REGISTRY_PATH
+    if not path.exists():
+        return 0
+    registry = pd.read_parquet(path)
+    rows = registry[registry["claim_id"] == claim_id]
+    if rows.empty:
+        return 0
+    return int(rows["trial_count"].max())
+
+
 @contextmanager
 def _registry_lock(lock_path: Path, timeout: float = 10.0):
     deadline = time.monotonic() + timeout

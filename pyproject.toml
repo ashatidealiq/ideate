@@ -13,6 +13,7 @@ dependencies = [
     "jupytext",
     "statsmodels",
     "matplotlib",
+    "scipy",
 ]
 
 [project.optional-dependencies]

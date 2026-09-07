@@ -70,6 +70,38 @@ PLANTED_SIGNALS = {
     "planted_signal_3": {"phi": 0.7, "alpha": 0.00006, "target_sharpe": 0.46},
 }
 
+# DESIGN §8 / BUILD.md Phase 4: three gate-testing fixtures, each composed
+# from data already in this fixture rather than new alpha-injection --
+# `factor_proxy_score` and `regime_flip` are static/structural fields;
+# `common/gates.py`'s spec.py-vocabulary compositions build the actual
+# planted "factor-proxy" and "unstable" signals from them:
+#   good           = planted_signal_1 itself (already known-recoverable, Phase 3)
+#   factor-proxy   = cs_zscore(factor_proxy_score)      -- IS a sector spread
+#   unstable       = mul(planted_signal_1, regime_flip) -- real alpha, sign
+#                     flipped for the last two-thirds of history
+#
+# factor_proxy_score: +1 for Financials, -1 for Technology, 0 otherwise
+# (static per asset). FACTORS.PARQUET's "value" factor is defined as
+# exactly the Financials-vs-Technology mean return spread, so a portfolio
+# built by ranking on this score *is*, by construction, a bet on that
+# factor -- guaranteed high loading, near-zero residual alpha (G9/G10).
+FACTOR_PROXY_LONG_SECTOR = "Financials"
+FACTOR_PROXY_SHORT_SECTOR = "Technology"
+
+# Sector pairs defining each fixture factor's spread return (DESIGN §8:
+# market, size, value, momentum, quality, low_vol). Arbitrary pairings --
+# these are structural, not economically meaningful -- except "value",
+# which must match FACTOR_PROXY_LONG_SECTOR/FACTOR_PROXY_SHORT_SECTOR.
+FACTOR_SECTOR_SPREADS = {
+    "value": ("Financials", "Technology"),
+    "size": ("Technology", "Utilities"),
+    "momentum": ("Energy", "Healthcare"),
+    "quality": ("Industrials", "Materials"),
+    "low_vol": ("Consumer", "Financials"),
+}
+
+REGIME_FLIP_SPLIT_FRACTION = 1.0 / 3.0  # positive in the first third of history, negative after
+
 
 def _asset_ids(n: int) -> list[str]:
     return [f"A{i:04d}" for i in range(1, n + 1)]
@@ -137,6 +169,10 @@ def build() -> None:
     cds_rows = []
     signal_rows = {name: [] for name in PLANTED_SIGNALS}
     lookahead_rows = []
+    factor_proxy_rows = []
+    regime_flip_rows = []
+
+    regime_boundary = all_dates[int(len(all_dates) * REGIME_FLIP_SPLIT_FRACTION)]
 
     for asset_id in asset_ids:
         row = static.loc[asset_id]
@@ -195,22 +231,63 @@ def build() -> None:
             pd.DataFrame({"date": dates, "asset_id": asset_id, "knowledge_date": trap_knowledge, "value": trap_value})
         )
 
+        if row["sector"] == FACTOR_PROXY_LONG_SECTOR:
+            proxy_score = 1.0
+        elif row["sector"] == FACTOR_PROXY_SHORT_SECTOR:
+            proxy_score = -1.0
+        else:
+            proxy_score = 0.0
+        factor_proxy_rows.append(
+            pd.DataFrame({"date": dates, "asset_id": asset_id, "knowledge_date": dates, "value": proxy_score})
+        )
+
+        regime = np.where(dates < regime_boundary, 1.0, -1.0)
+        regime_flip_rows.append(pd.DataFrame({"date": dates, "asset_id": asset_id, "knowledge_date": dates, "value": regime}))
+
+    ret1d_all = pd.concat(ret1d_rows)
+    sector_all = pd.concat(sector_rows)
+
     _write_field("close", pd.concat(close_rows))
     _write_field("volume", pd.concat(volume_rows))
     _write_field("mktcap", pd.concat(mktcap_rows))
-    _write_field("ret_1d", pd.concat(ret1d_rows))
+    _write_field("ret_1d", ret1d_all)
     _write_field("adv_20", pd.concat(adv20_rows))
-    _write_field("sector", pd.concat(sector_rows))
+    _write_field("sector", sector_all)
     _write_field("country", pd.concat(country_rows))
     _write_field("region", pd.concat(region_rows))
     _write_field("cds_spread_5y", pd.concat(cds_rows))
     for name, frames in signal_rows.items():
         _write_field(name, pd.concat(frames))
     _write_field("lookahead_trap", pd.concat(lookahead_rows))
+    _write_field("factor_proxy_score", pd.concat(factor_proxy_rows))
+    _write_field("regime_flip", pd.concat(regime_flip_rows))
+
+    _write_factors(ret1d_all, sector_all)
 
     print(f"assets: {N_ASSETS} (cds names: {N_CDS_NAMES}, delisted: {N_DELISTED})")
     print(f"date range: {all_dates[0].date()} .. {all_dates[-1].date()}")
+    print(f"regime_flip boundary: {regime_boundary.date()}")
     print(f"planted sharpe targets (approximate, see module docstring): {PLANTED_SHARPE_TARGETS}")
+
+
+def _write_factors(ret1d: pd.DataFrame, sector: pd.DataFrame) -> None:
+    """Builds fixtures/factors.parquet: daily factor returns, wide-form
+    (date, market, size, value, momentum, quality, low_vol), for
+    common/gates.py's G9/G10 factor regression. Each style factor is a
+    sector-group mean-return spread computed directly from this fixture's
+    own ret_1d and sector fields (DESIGN §8's factor list, structurally
+    simplified for a synthetic fixture -- not economically meaningful)."""
+    merged = ret1d.merge(sector[["date", "asset_id", "value"]], on=["date", "asset_id"], suffixes=("_ret", "_sector"))
+    sector_means = merged.groupby(["date", "value_sector"])["value_ret"].mean().unstack("value_sector")
+
+    market = merged.groupby("date")["value_ret"].mean().rename("market")
+    factors = {name: sector_means[long] - sector_means[short] for name, (long, short) in FACTOR_SECTOR_SPREADS.items()}
+    out = pd.concat([market, pd.DataFrame(factors)], axis=1).reset_index().rename(columns={"date": "date"})
+
+    OUT_DIR.parent.mkdir(parents=True, exist_ok=True)
+    path = OUT_DIR.parent / "factors.parquet"
+    out.to_parquet(path, index=False)
+    print(f"wrote {path} ({len(out)} rows)")
 
 
 PLANTED_SHARPE_TARGETS = {name: cfg["target_sharpe"] for name, cfg in PLANTED_SIGNALS.items()}

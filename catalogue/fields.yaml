@@ -94,3 +94,17 @@ fields:
     coverage: {start: "2010-01-04", universes: [all]}
     known_gaps: ["deliberate PIT test fixture (DESIGN §12): knowledge_date is always date + 30 days"]
     description: "Fixture-only lookahead trap: catches a loader that filters on date instead of knowledge_date"
+
+  - name: factor_proxy_score
+    source: panel/factor_proxy_score.parquet
+    dtype: float64
+    pit: {event_col: date, knowledge_col: date, lag_days: 0}
+    coverage: {start: "2010-01-04", universes: [all]}
+    description: "Fixture-only, static per asset: +1 Financials / -1 Technology / 0 else. Ranking on it IS a bet on factors.parquet's 'value' factor by construction (BUILD.md Phase 4 gate-testing fixture)"
+
+  - name: regime_flip
+    source: panel/regime_flip.parquet
+    dtype: float64
+    pit: {event_col: date, knowledge_col: date, lag_days: 0}
+    coverage: {start: "2010-01-04", universes: [all]}
+    description: "Fixture-only: +1 for the first third of the fixture's date range, -1 after. Multiplying a real planted signal by this flips its sign partway through history (BUILD.md Phase 4 gate-testing fixture)"
