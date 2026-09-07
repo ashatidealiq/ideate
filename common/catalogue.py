@@ -7,9 +7,11 @@ into a parquet path and PIT lag, and `load_universes` to turn a universe
 name into the field whose per-date presence defines membership.
 `common/costs.py` uses `load_costs` for its ADV-bucketed spread table.
 
-Stage 2's resolution of a claim's `required_fields` against this catalogue
-is deterministic joins over the same `load_fields` output and belongs to
-`spec.py`/the Stage 2 notebook, not to this module.
+`resolve_required_fields` is Stage 2's deterministic join of a claim's
+`required_fields` against this catalogue (DESIGN §7 Stage 2) -- it lives
+here, not in a Stage-2-only module, because Stage 3's spec generation
+(Phase 5) needs the same resolution before Stage 2's own notebook exists
+(Phase 6); both call this one function.
 """
 
 from __future__ import annotations
@@ -19,7 +21,7 @@ from pathlib import Path
 import yaml
 
 from common import config
-from common.schemas import FieldDef, RegionCosts, UniverseDef
+from common.schemas import FieldDef, RegionCosts, Resolution, UniverseDef
 
 
 def load_fields(path: Path | None = None) -> dict[str, FieldDef]:
@@ -99,3 +101,28 @@ def get_region_costs(region: str, regions: dict[str, RegionCosts] | None = None)
     if region not in regions:
         raise KeyError(f"unknown catalogue region: {region!r}")
     return regions[region]
+
+
+def resolve_required_fields(required_fields: list[str], fields: dict[str, FieldDef] | None = None) -> list[Resolution]:
+    """DESIGN §7 Stage 2: joins `required_fields` against the catalogue,
+    one `Resolution` row per field, `resolved=False` (and nothing else
+    filled in) for anything not in the catalogue vocabulary."""
+    fields = fields if fields is not None else load_fields()
+    rows: list[Resolution] = []
+    for name in required_fields:
+        field = fields.get(name)
+        if field is None:
+            rows.append(Resolution(field=name, resolved=False))
+        else:
+            rows.append(
+                Resolution(
+                    field=name,
+                    resolved=True,
+                    source=field.source,
+                    coverage_start=field.coverage.start,
+                    coverage_universes=field.coverage.universes,
+                    pit_lag_days=field.pit.lag_days,
+                    known_gaps=field.known_gaps,
+                )
+            )
+    return rows

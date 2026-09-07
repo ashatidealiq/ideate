@@ -134,14 +134,17 @@ def halt(
     code_commit: str = "",
     common_version: str = "",
     catalogue_sha256: str | None = None,
+    llm: LLMCallInfo | None = None,
     trial_count: int = 0,
 ) -> Manifest:
     """Writes a `status: halted` manifest: the stage could not proceed and
-    said why, rather than crashing (CLAUDE.md "Halting")."""
+    said why, rather than crashing (CLAUDE.md "Halting"). `llm` records
+    provenance for a real LLM call that happened before the halt (e.g. a
+    tradability verdict of False still made a real call)."""
     return _finish(
         ctx, "halted", inputs=inputs, halt_reason=halt_reason,
         code_commit=code_commit, common_version=common_version,
-        catalogue_sha256=catalogue_sha256, trial_count=trial_count,
+        catalogue_sha256=catalogue_sha256, llm=llm, trial_count=trial_count,
     )
 
 

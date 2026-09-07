@@ -105,6 +105,58 @@ class Claim(StrictModel):
     tradability_reason: str
 
 
+class ClaimExtraction(StrictModel):
+    """Stage 1a's LLM output (`prompts/s1_extract.md`): every `Claim` field
+    the *extraction* call produces -- everything except `claim_id` (assigned
+    by the pipeline, not the model) and the tradability columns (`tradable`,
+    `tradability_reason`), which come from the separate Stage 1b call. The
+    notebook merges `claim_id` + this + `TradabilityJudgment` into a `Claim`.
+    """
+
+    source_type: str
+    source_title: str
+    source_authors: list[str]
+    source_year: int
+    source_doi: str | None = None
+    edge_statement: str
+    mechanism: str
+    predicted_sign: Literal[-1, 1]
+    universe_description: str
+    frequency: str
+    horizon_days_lo: int
+    horizon_days_hi: int
+    formula_latex: str | None = None
+    formula_location: str | None = None
+    required_fields: list[str]
+    reported_sharpe: float | None = None
+    reported_period_start: date | None = None
+    reported_period_end: date | None = None
+    reported_gross: bool | None = None
+    author_caveats: list[str] = []
+
+
+class TradabilityJudgment(StrictModel):
+    """Stage 1b's LLM output (`prompts/s1_tradability.md`)."""
+
+    tradable: bool
+    tradability_reason: str
+
+
+class SignalCodeOutput(StrictModel):
+    """Stage 4's LLM output (`prompts/s4_code.md`): the agent-authored
+    `compute_signal` source, for audit -- `compile_signal(spec)` is what
+    actually runs; this must round-trip against it (DESIGN §5)."""
+
+    code: str
+
+
+class Critique(StrictModel):
+    """Stage 6's LLM output (`prompts/s6_critique.md`)."""
+
+    critique: str
+    verdict: Literal["advance", "reject"]
+
+
 # --------------------------------------------------------------------------
 # FieldDef (DESIGN §4 catalogue/fields.yaml)
 # --------------------------------------------------------------------------
