@@ -39,7 +39,7 @@ This is being built in phases (see `BUILD.md`), each one fully tested before mov
 - Phase 5: the LLM layer and prompts
 - Phase 6: wiring all seven stages together end to end, plus the report
 
-Right now the whole thing runs against a synthetic fixture dataset (fake stocks, fake prices, a few planted "known good" and "known bad" signals so the gates can be tested against something with a predictable answer) rather than real market data. Real data is a later phase. And critically, no real AI model has been called yet anywhere in this pipeline. Everything LLM-shaped has been tested with a scripted fake client that returns canned responses, because there's no API key wired up yet. The plumbing is real and tested. Whether an actual model can read a real paper and propose something sensible is still an open question, and it's the next thing to find out.
+Right now the whole thing runs against a synthetic fixture dataset (fake stocks, fake prices, a few planted "known good" and "known bad" signals so the gates can be tested against something with a predictable answer) rather than real market data. Real data is a later phase. And critically, no real AI model has been called yet anywhere in this pipeline. Everything LLM-shaped has been tested with a scripted fake client that returns canned responses, because there's no API key wired up yet. The plumbing is real and tested. 
 
 ## Running it
 
