@@ -1,10 +1,11 @@
 """Field catalogue loader and resolver (DESIGN.md §4).
 
-Loads and validates `catalogue/fields.yaml` and `catalogue/universes.yaml`
-into `schemas.FieldDef` / `schemas.UniverseDef` rows. `pit.py` is the only
-other module that calls this one; it uses `load_fields` to turn a field
-name into a parquet path and PIT lag, and `load_universes` to turn a
-universe name into the field whose per-date presence defines membership.
+Loads and validates `catalogue/fields.yaml`, `catalogue/universes.yaml`, and
+`catalogue/costs.yaml` into `schemas.FieldDef` / `schemas.UniverseDef` /
+`schemas.RegionCosts` rows. `pit.py` uses `load_fields` to turn a field name
+into a parquet path and PIT lag, and `load_universes` to turn a universe
+name into the field whose per-date presence defines membership.
+`common/costs.py` uses `load_costs` for its ADV-bucketed spread table.
 
 Stage 2's resolution of a claim's `required_fields` against this catalogue
 is deterministic joins over the same `load_fields` output and belongs to
@@ -18,7 +19,7 @@ from pathlib import Path
 import yaml
 
 from common import config
-from common.schemas import FieldDef, UniverseDef
+from common.schemas import FieldDef, RegionCosts, UniverseDef
 
 
 def load_fields(path: Path | None = None) -> dict[str, FieldDef]:
@@ -70,3 +71,31 @@ def get_universe(name: str, universes: dict[str, UniverseDef] | None = None) -> 
     if name not in universes:
         raise KeyError(f"unknown catalogue universe: {name!r}")
     return universes[name]
+
+
+def load_costs(path: Path | None = None) -> dict[str, RegionCosts]:
+    """Parses `catalogue/costs.yaml` into `{region: RegionCosts}`.
+
+    Raises on any unknown key, a duplicate region, and if any region's
+    bucket list doesn't end with an unbounded (`max_adv: null`) bucket.
+    """
+    path = path or (config.CATALOGUE_SOURCE_DIR / "costs.yaml")
+    raw = yaml.safe_load(path.read_text())
+    regions: dict[str, RegionCosts] = {}
+    for entry in raw["regions"]:
+        region = RegionCosts.model_validate(entry)
+        if region.region in regions:
+            raise ValueError(f"duplicate region {region.region!r} in {path}")
+        if not region.adv_buckets or region.adv_buckets[-1].max_adv is not None:
+            raise ValueError(f"region {region.region!r} in {path} must end with a max_adv: null bucket")
+        regions[region.region] = region
+    return regions
+
+
+def get_region_costs(region: str, regions: dict[str, RegionCosts] | None = None) -> RegionCosts:
+    """Looks up one region's cost table, raising `KeyError` if it is not in
+    the catalogue vocabulary."""
+    regions = regions if regions is not None else load_costs()
+    if region not in regions:
+        raise KeyError(f"unknown catalogue region: {region!r}")
+    return regions[region]

@@ -146,6 +146,21 @@ class UniverseDef(StrictModel):
     member_if_present: str
 
 
+class AdvBucket(StrictModel):
+    """One row of `catalogue/costs.yaml`'s per-region spread table (DESIGN
+    §2, §6.5): the half-spread charged, in bps, for names whose dollar ADV
+    is at most `max_adv` (the last bucket in a region's list should have
+    `max_adv: null` for "everything above the prior buckets")."""
+
+    max_adv: float | None
+    spread_bps: float
+
+
+class RegionCosts(StrictModel):
+    region: str
+    adv_buckets: list[AdvBucket]
+
+
 # --------------------------------------------------------------------------
 # Resolution (DESIGN §7 Stage 2)
 # --------------------------------------------------------------------------

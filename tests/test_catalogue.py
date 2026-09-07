@@ -60,3 +60,26 @@ def test_load_universes_returns_expected_names():
 def test_get_universe_raises_on_unknown_name():
     with pytest.raises(KeyError):
         catalogue.get_universe("not_a_real_universe")
+
+
+def test_load_costs_returns_expected_regions():
+    regions = catalogue.load_costs()
+    assert set(regions) == {"US", "EU"}
+    assert regions["US"].adv_buckets[-1].max_adv is None
+
+
+def test_load_costs_rejects_missing_unbounded_bucket(tmp_path):
+    bad = tmp_path / "costs.yaml"
+    bad.write_text(
+        "regions:\n"
+        "  - region: US\n"
+        "    adv_buckets:\n"
+        "      - {max_adv: 1000000, spread_bps: 10}\n"
+    )
+    with pytest.raises(ValueError, match="max_adv: null"):
+        catalogue.load_costs(bad)
+
+
+def test_get_region_costs_raises_on_unknown_region():
+    with pytest.raises(KeyError):
+        catalogue.get_region_costs("not_a_real_region")

@@ -13,16 +13,25 @@ with columns `date, asset_id, knowledge_date, value` (DESIGN §4). Generation
 is seeded (SEED) for reproducibility.
 
 The three `planted_signal_N` fields are each linearly combined into the
-next day's return with a hand-picked effect size intended to produce
-annualised Sharpe ratios near PLANTED_SHARPE_TARGETS, under a naive
-zero-cost equal-weight top/bottom-decile long-short portfolio. The exact
-alpha/noise constants below are a closed-form approximation (order-statistic
-tail mean of a standard normal for the decile gap, idiosyncratic-noise
-diversification for the leg size) chosen before `backtest.py` exists;
-Phase 3's acceptance test ("planted fixture signals recover their known net
-Sharpe within +/-0.1 at fixed costs") is the actual verification and may
-require retuning these constants once a real backtester can be run against
-this fixture.
+next day's return with a hand-picked effect size, giving each a real
+(injected, not estimated) net Sharpe once actually run through
+`backtest.py`. Each `target_sharpe` below is the value tests/test_backtest.py
+asserts (+/-0.1, per BUILD.md Phase 3) `run_backtest` recovers under this
+exact canonical recipe -- changing either invalidates the other:
+
+    signal: cs_zscore(planted_signal_N), sign=+1
+    universe: all, no filters
+    portfolio: long_short_quantile, quantile=0.1, weighting=equal,
+               gross_leverage=1.0, net_exposure=0.0, max_position=0.05,
+               rebalance=daily, holding_period=1, execution_lag=1
+    costs: fixed_bps, spread_bps=1.0, impact_model=none, borrow_bps_annual=5
+    period: 2010-01-04 .. 2020-12-31
+
+These are measured values (from actually running that recipe against this
+seeded fixture), not the closed-form approximation this module used before
+`backtest.py` existed to check against -- weekly rebalancing in particular
+decays `planted_signal_3` (phi=0.7, the least persistent) far more than the
+others, so the recipe's exact settings matter, not just its shape.
 """
 
 from __future__ import annotations
@@ -53,11 +62,12 @@ LOOKAHEAD_LAG_DAYS = 30
 DRIFT = 0.0002          # daily log-return drift, ~5%/yr
 NOISE_STD = 0.02         # idiosyncratic daily log-return noise std
 
-# Planted signal -> (AR(1) persistence, next-day-return effect size, target Sharpe)
+# Planted signal -> (AR(1) persistence, next-day-return effect size, measured
+# net Sharpe under the canonical recipe documented above).
 PLANTED_SIGNALS = {
-    "planted_signal_1": {"phi": 0.9, "alpha": 0.00017, "target_sharpe": 1.5},
-    "planted_signal_2": {"phi": 0.8, "alpha": 0.00011, "target_sharpe": 1.0},
-    "planted_signal_3": {"phi": 0.7, "alpha": 0.00006, "target_sharpe": 0.5},
+    "planted_signal_1": {"phi": 0.9, "alpha": 0.00017, "target_sharpe": 1.07},
+    "planted_signal_2": {"phi": 0.8, "alpha": 0.00011, "target_sharpe": 0.60},
+    "planted_signal_3": {"phi": 0.7, "alpha": 0.00006, "target_sharpe": 0.46},
 }
 
 

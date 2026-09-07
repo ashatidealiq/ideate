@@ -1,0 +1,17 @@
+# Placeholder spread-by-ADV-bucket costs (DESIGN.md §2, §6.5). Not
+# calibrated to real market data -- Phase 7 replaces these with real
+# vendor-derived buckets. Bucketed by dollar ADV (adv_20 shares * close);
+# spread_bps is the round-trip spread, halved in costs.py to price one side
+# of a trade. The last bucket per region must have max_adv: null.
+regions:
+  - region: US
+    adv_buckets:
+      - {max_adv: 1.0e6, spread_bps: 25}
+      - {max_adv: 1.0e7, spread_bps: 12}
+      - {max_adv: null, spread_bps: 5}
+
+  - region: EU
+    adv_buckets:
+      - {max_adv: 1.0e6, spread_bps: 35}
+      - {max_adv: 1.0e7, spread_bps: 18}
+      - {max_adv: null, spread_bps: 8}

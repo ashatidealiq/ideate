@@ -25,3 +25,12 @@ REGISTRY_PATH = PIPELINE_ROOT / "registry.parquet"
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 CATALOGUE_SOURCE_DIR = REPO_ROOT / "catalogue"
+
+TARGET_AUM = 5_000_000.0
+"""Notional book size (DESIGN §8) used to turn a position *weight* (a
+fraction of the book) into a dollar trade size for the sqrt impact cost
+model (common/costs.py) and, later, gate G8's capacity rescaling. A
+placeholder, sized to the synthetic fixture's ADV (median ~$58M/day) so a
+5% position's impact cost lands in a plausible tens-of-bps range rather
+than hundreds -- not a realistic real-fund AUM. Phase 7 replaces this once
+real ADV data (and a real target book size) exists."""
