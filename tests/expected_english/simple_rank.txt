@@ -1,0 +1,3 @@
+Signal (sign=1):
+  n1 = cs_rank(close)
+Output: n1

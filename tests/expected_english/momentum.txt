@@ -1,0 +1,5 @@
+Signal (sign=-1):
+  n1 = pct_change(cds_spread_5y, n=5)
+  n2 = cs_zscore(n1)
+  n3 = cs_winsorize(n2, k=3)
+Output: n3

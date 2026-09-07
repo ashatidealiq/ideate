@@ -1,0 +1,5 @@
+Signal (sign=1):
+  n1 = cs_zscore(close)
+  n2 = cs_zscore(volume)
+  n3 = combine(n1, n2, weights=[0.6, 0.4])
+Output: n3

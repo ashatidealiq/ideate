@@ -175,7 +175,13 @@ class SignalNode(StrictModel):
     id: str
     op: str
     inputs: list[str]
-    params: dict[str, float] = {}
+    params: dict[str, float | str | list[str | float]] = {}
+    """Values are usually a name in the spec's top-level `params` block
+    (DESIGN §6.7) -- `spec.validate_spec` rejects an inline float (or, for
+    `combine`'s `weights`, an inline list of floats) here, since every
+    numeric constant must be declared and named there (DESIGN §6.1). Both
+    are still accepted by this schema so that rejecting them, with a clear
+    message, is validate_spec's job rather than a generic parse error."""
 
 
 class Signal(StrictModel):
