@@ -55,7 +55,7 @@ python fixtures/build_fixture.py     # generates the synthetic dataset
 python run_claim.py --source fixtures/papers/reversal.pdf
 ```
 
-That second command won't do anything useful yet without a real LLM client wired in, since it defaults to calling the Anthropic API. Once there's a key configured, this is the command that takes a paper all the way to a finished report.
+This won't do anything useful yet without a real LLM client wired in (defaults to calling the Anthropic API.) Running this second command that takes a paper all the way to a finished report.
 
 ## Layout
 
